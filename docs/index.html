@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="#141518"><title>拍完好剪｜拍摄与剪辑助手</title><link rel="stylesheet" href="workbench.css"><link rel="icon" href="data:,"></head>
+<body>
+<header class="top"><button class="brand" data-page="edit"><span class="mark" aria-hidden="true"></span>拍完好剪</button><span class="workspace">拍摄与剪辑助手</span><span class="save" id="save">草稿</span><button id="guide">怎么试用</button><button id="export" class="primary">导出剪辑方案</button></header>
+<div class="shell">
+<nav class="rail" aria-label="工作区"><button data-page="edit" class="active"><b aria-hidden="true">▥</b>检查草稿</button><button data-page="ai"><b aria-hidden="true">✧</b>AI 方案</button><button data-page="library"><b aria-hidden="true">▦</b>素材库</button><button data-page="shoot"><b aria-hidden="true">◎</b>拍摄清单</button><button data-page="history"><b aria-hidden="true">◷</b>修改记录</button></nav>
+<main>
+<section class="project-head"><div><div class="crumb">我的项目 <span>/</span> <span id="project-kind">咖啡制作记录</span></div><h1 id="project-title">从咖啡粉到一杯拿铁</h1></div><button id="reset">重置示例</button></section>
+<section class="brief" id="brief-bar"><div id="goal-field"><label for="goal">创作目标</label><select id="goal"><option value="process">让观众看懂咖啡的制作过程</option><option value="mood">记录做咖啡时的片刻氛围</option></select></div><div id="duration-field"><label for="target">目标片长</label><select id="target"><option value="18">18 秒</option><option value="12">12 秒</option></select></div><div id="ai-brief-summary" hidden></div><div class="brief-note"><span class="status-dot"></span> 在当前项目里找素材</div><button class="primary" id="analyze">✧ 检查素材缺口</button></section>
+<section id="edit" class="page">
+<div class="editor-grid">
+ <aside class="panel bin"><div class="panel-title"><h2>项目素材 <span id="clip-count"></span></h2><button class="link" data-page="library">全部 ↗</button></div><div id="bin"></div><label class="upload">＋ 导入本地视频<input id="import" type="file" accept="video/*" multiple></label></aside>
+ <section class="panel preview"><div class="panel-title"><h2 id="preview-title">片段预览</h2><span class="pill">原比例</span></div><div class="monitor"><video id="video" controls playsinline preload="metadata" poster="https://haicha-yijing-demo.frillypitch1.chatgpt.site/assets/3572.jpg"></video><div id="gap-screen" hidden><span>此处缺少画面</span><p>选择素材填入，或把这一段加入补拍清单。</p></div></div><div class="playbar"><button id="play-all">▶ 播放草稿</button><span id="timecode">00:00 / 00:18</span><button id="compare">查看修改前</button></div><div class="caption" id="caption">准备咖啡粉，压实。</div><div id="trim" class="trim"></div></section>
+ <aside class="panel assistant" aria-label="小镜剪辑助手">
+  <header class="mirror-head"><img class="mirror-avatar" src="assets/xiaojing.png" alt="" width="40" height="40"><div><h2>小镜</h2><p>剪辑建议 · 素材补齐</p></div><span class="pill" id="mirror-mode">示例模式</span></header>
+  <div class="mirror-scope"><span class="status-dot" aria-hidden="true"></span><span id="mirror-scope">当前草稿</span></div>
+  <div id="mirror-history" class="mirror-history" role="log" aria-label="和小镜的对话">
+    <div class="mirror-welcome">在下方时间线上选一段视频，问我留多长、怎么接下一镜，或者缺画面时怎么剪。</div>
+  </div>
+  <div class="mirror-prompts" aria-label="快捷提问">
+    <button type="button" data-mirror-example="这段留多长？">这段留多长？</button>
+    <button type="button" data-mirror-example="下一镜怎么接？">下一镜怎么接？</button>
+    <button type="button" data-mirror-example="我已经离店，不能补拍，素材不够怎么剪？">素材不够怎么剪？</button>
+  </div>
+  <form class="mirror-compose" id="mirror-form"><textarea id="mirror-question" rows="2" maxlength="420" placeholder="问小镜一个剪辑问题…" aria-label="给小镜的问题"></textarea><button class="primary" id="mirror-send" type="submit">发送</button></form>
+  <details class="mirror-check" id="mirror-check"><summary>素材检查 <span class="pill" id="analysis-kind">示例分析</span></summary><div id="assistant" aria-live="polite"></div></details>
+ </aside>
+</div>
+<section class="panel timeline"><div class="panel-title"><h2>剪辑时间线 <span id="coverage"></span></h2><div class="actions"><button id="undo">↶ 撤销上一步</button></div></div><div class="ruler"><span>00:00</span><span id="ruler-middle">00:09</span><span id="ruler-end">00:18</span></div><div id="track" class="track"></div><div id="script-track" class="script-track"></div></section>
+</section>
+<section id="ai" class="page" hidden>
+  <div class="section-title"><div><h2>AI 方案</h2><p>告诉助手你想怎么剪。先核对镜头和素材证据，再应用到草稿。</p></div><span id="model-status" class="pill">正在检查本地模型</span></div>
+  <div class="ai-grid">
+    <section class="panel">
+      <div class="panel-title"><h2>创作目标与素材</h2></div>
+      <div class="ai-panel">
+        <label class="ai-field">使用哪些素材<select id="ai-source"><option value="sample">咖啡案例</option><option value="mine">我的素材</option></select></label>
+        <label class="ai-field">希望观众看到什么<textarea id="ai-brief" rows="4" maxlength="420" placeholder="例如：我想做一条 18 秒的咖啡教程，让观众看见咖啡流进杯子。我已经离店，无法补拍。"></textarea></label>
+        <div class="ai-actions"><button type="button" data-example="tutorial">咖啡制作教程</button><button type="button" data-example="mood">离店后剪 12 秒氛围片</button></div>
+        <div class="ai-actions"><button type="button" id="ai-import">＋ 导入视频</button><small>拍摄前可以先写目标，生成拍摄清单。</small></div>
+        <div id="ai-assets"></div>
+        <div class="ai-actions"><button class="primary" id="ai-generate" type="button">✧ 分析目标并生成方案</button><button id="ai-cancel" type="button" hidden>取消</button></div>
+        <p class="muted" id="ai-step" role="status"></p>
+      </div>
+    </section>
+    <section class="panel"><div class="panel-title"><h2>建议方案与证据</h2><span id="ai-result-kind" class="pill">待分析</span></div><div id="ai-result" class="ai-panel"><p class="muted">先写创作目标。助手会列出每段需要的画面、能用的素材和待处理的缺口。</p></div></section>
+  </div>
+</section>
+<section id="library" class="page" hidden><div class="section-title"><div><h2>素材库</h2><p>先检查已有素材，常常能少补拍一次。</p></div><input id="search" placeholder="搜索名称或已标注的内容" aria-label="搜索素材"></div><div id="library-grid" class="library-grid"></div><div class="notice">本地视频会读取真实时长并保存在浏览器中。给导入的视频加一句内容说明，之后就能按这句说明来找。</div></section>
+<section id="shoot" class="page" hidden><div class="section-title"><div><h2>拍摄清单</h2><p>补哪一镜、拍多长、用在哪里，带到现场再看。</p></div><button id="export-tasks">下载拍摄清单</button></div><div id="tasks"></div></section>
+<section id="history" class="page" hidden><div class="section-title"><div><h2>修改记录</h2><p>每次采用建议，都保留修改依据和时间。</p></div></div><div id="history-list"></div></section>
+<footer><span>示例项目 · 实拍素材来自 Mixkit</span><button id="credits" class="link">素材来源与能力说明 ↗</button><button id="retry" class="link">测试检查失败</button></footer>
+</main></div>
+<dialog id="dialog"><div class="panel-title"><h2 id="dialog-title"></h2><button id="close-dialog" aria-label="关闭">×</button></div><div id="dialog-body"></div></dialog><div id="toast" role="status"></div>
+<script src="studio.js"></script><script src="ai-workspace.js"></script></body></html>
