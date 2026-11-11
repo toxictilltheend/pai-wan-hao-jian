@@ -5,7 +5,7 @@
 <div class="shell">
 <nav class="rail" aria-label="工作区"><button data-page="edit" class="active"><b aria-hidden="true">▥</b>检查草稿</button><button data-page="ai"><b aria-hidden="true">✧</b>AI 方案</button><button data-page="library"><b aria-hidden="true">▦</b>素材库</button><button data-page="shoot"><b aria-hidden="true">◎</b>拍摄清单</button><button data-page="history"><b aria-hidden="true">◷</b>修改记录</button></nav>
 <main>
-<section class="project-head"><div><div class="crumb">我的项目 <span>/</span> <span id="project-kind">咖啡制作记录</span></div><h1 id="project-title">从咖啡粉到一杯拿铁</h1></div><button id="reset">重置示例</button></section>
+<section class="project-head"><div><div class="crumb">我的项目 <span>/</span> <span id="project-kind">咖啡制作记录</span></div><h1 id="project-title">从咖啡粉到一杯拿铁</h1></div><div class="actions"><button id="field-entry" data-page="shoot">离场前检查</button><button id="reset">重置示例</button></div></section>
 <section class="brief" id="brief-bar"><div id="goal-field"><label for="goal">创作目标</label><select id="goal"><option value="process">让观众看懂咖啡的制作过程</option><option value="mood">记录做咖啡时的片刻氛围</option></select></div><div id="duration-field"><label for="target">目标片长</label><select id="target"><option value="18">18 秒</option><option value="12">12 秒</option></select></div><div id="ai-brief-summary" hidden></div><div class="brief-note"><span class="status-dot"></span> 在当前项目里找素材</div><button class="primary" id="analyze">✧ 检查素材缺口</button></section>
 <section id="edit" class="page">
 <div class="editor-grid">
@@ -47,9 +47,9 @@
   </div>
 </section>
 <section id="library" class="page" hidden><div class="section-title"><div><h2>素材库</h2><p>先检查已有素材，常常能少补拍一次。</p></div><input id="search" placeholder="搜索名称或已标注的内容" aria-label="搜索素材"></div><div id="library-grid" class="library-grid"></div><div class="notice">本地视频会读取真实时长并保存在浏览器中。给导入的视频加一句内容说明，之后就能按这句说明来找。</div></section>
-<section id="shoot" class="page" hidden><div class="section-title"><div><h2>拍摄清单</h2><p>补哪一镜、拍多长、用在哪里，带到现场再看。</p></div><button id="export-tasks">下载拍摄清单</button></div><div id="tasks"></div></section>
+<section id="shoot" class="page" hidden><div class="section-title"><div><h2>拍摄清单</h2><p>趁还能拍，确认这条视频需要的画面都在。</p></div><button id="export-tasks">下载拍摄清单</button></div><section id="field-check" class="panel field-check" aria-label="离场前检查"></section><div id="tasks"></div></section>
 <section id="history" class="page" hidden><div class="section-title"><div><h2>修改记录</h2><p>每次采用建议，都保留修改依据和时间。</p></div></div><div id="history-list"></div></section>
 <footer><span>示例项目 · 实拍素材来自 Mixkit</span><button id="credits" class="link">素材来源与能力说明 ↗</button><button id="retry" class="link">测试检查失败</button></footer>
 </main></div>
 <dialog id="dialog"><div class="panel-title"><h2 id="dialog-title"></h2><button id="close-dialog" aria-label="关闭">×</button></div><div id="dialog-body"></div></dialog><div id="toast" role="status"></div>
-<script src="studio.js"></script><script src="ai-workspace.js"></script></body></html>
+<script src="studio.js?v=2"></script><script src="ai-workspace.js?v=2"></script><script src="shoot-check.js?v=2"></script></body></html>

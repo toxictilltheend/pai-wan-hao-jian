@@ -3,7 +3,7 @@ const $ = id => document.getElementById(id);
 const escapeText = value => String(value).replace(/[&<>"']/g, char => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]));
 const initial = () => ({
   goal:'process', target:18, filled:false, fillId:null, end:2, task:false,
-  taskDone:false, analyzed:false, aiPlan:null, logs:[], undo:[], imports:[]
+  taskDone:false, analyzed:false, aiPlan:null, canReshoot:null, field:null, logs:[], undo:[], imports:[]
 });
 const stock = [
   {id:'3572',name:'01 · 压实咖啡粉',tag:'prepare',duration:11,source:'https://haicha-yijing-demo.frillypitch1.chatgpt.site/assets/3572.mp4',poster:'https://haicha-yijing-demo.frillypitch1.chatgpt.site/assets/3572.jpg'},
@@ -50,6 +50,7 @@ function change(message,mutate) {
   persist();render();toast(message);
 }
 function getClip(id) { return media.find(clip=>clip.id===id); }
+function canReshootNow() { return state.canReshoot??(state.aiPlan?.canReshoot!==false); }
 const processGoal = () => state.goal==='process';
 const middleTitle = () => processGoal() ? '咖啡流入杯中' : '机器运转';
 const middleTag = () => processGoal() ? 'extract' : 'machine';
@@ -100,7 +101,7 @@ function navigate(next) {
     else button.removeAttribute('aria-current');
   });
   if (page==='library') renderLibrary();
-  if (page==='shoot') renderTasks();
+  if (page==='shoot'){renderTasks();window.fieldCheck?.render();}
   if (page==='history') renderHistory();
   $('brief-bar').hidden=page==='ai';
   if (page==='ai')window.studioAI?.open();
@@ -156,7 +157,7 @@ function renderAssistant() {
       const start=timeline.slice(0,index).reduce((sum,slot)=>sum+slot.length,0);
       const range=[start,start+timeline[index].length].map(second=>'00:'+String(second).padStart(2,'0')).join('–');
       return '<article class="issue"><span class="number">'+range+' · '+(issue.type==='missing'?'还缺哪些画面':'用了多少秒')+'</span><h3>'+issue.title+'</h3><p>'+issue.body+'</p><button data-locate="'+index+'">定位片段</button>'+
-      (issue.type==='missing'?'<button data-action="find">查看可用素材</button><button data-action="task">加入补拍清单</button>':'<button data-action="extend">看看原视频能否多留几秒</button>')+'</article>';
+      (issue.type==='missing'?'<button data-action="find">查看可用素材</button>'+(canReshootNow()?'<button data-action="task">加入补拍清单</button>':''):'<button data-action="extend">看看原视频能否多留几秒</button>')+'</article>';
     }).join(''):
       '<div class="good"><h3>这版剪辑草稿已有连续画面</h3><p>三个段落都有可用片段。播放确认节奏，再决定是否继续调整。</p><button data-action="play">播放当前版本</button></div>')+
     (list.length?'<button data-action="alternative">改剪成 12 秒氛围短片</button>':'');
@@ -189,7 +190,7 @@ function candidates() {
   const found=media.filter(clip=>clip.tag===desired&&clip.duration>=needed&&!used(clip.id));
   dialog('给中间这一段找素材', '<p>需要 '+needed+' 秒 '+(desired==='extract'?'咖啡流入杯中':'机器操作 / 氛围')+' 画面。结果基于当前项目素材的已有标注。</p>'+
     (found.length?found.map(clip=>'<div><h3>'+escapeText(clip.name)+'</h3><video controls preload="metadata" poster="'+(clip.poster||'')+'" src="'+clip.source+'"></video><p>可试用的片段 0–'+needed+' 秒 · 原视频 '+clip.duration.toFixed(1)+' 秒</p><button class="primary" data-fill="'+clip.id+'">确认插入这段</button></div>').join(''):
-    '<div class="notice">当前项目没有找到符合内容标注和时长要求的片段。可以给新素材补充标注，或创建补拍任务。</div><button data-action="task">加入补拍清单</button>'));
+    '<div class="notice">当前项目没有找到符合内容标注和时长要求的片段。</div>'+(canReshootNow()?'<button data-action="task">加入补拍清单</button>':'<button data-action="alternative">看看现有素材能怎么讲</button>')));
 }
 function extend() {
   const clip=getClip('3573'),needed=slots()[2].length;
@@ -222,14 +223,14 @@ function renderTasks() {
   const checks=[prep,middle,milk].map((slot,index)=>{
     const expected=['prepare',middleTag(),'milk'][index];
     const has=media.some(clip=>clip.tag===expected&&clip.duration>=slot.length);
-    return '<article class="task"><div><span class="status">'+(has?'已有可用素材':'待拍摄')+'</span><h3>'+slot.title+'</h3></div><p>成片预计使用 '+slot.length+' 秒。'+(index===1?shotInstruction():'建议保留动作起止，方便后续裁切。')+'</p>'+
+    return '<article class="task"><div><span class="status">'+(has?'已有可用素材':canReshootNow()?'待拍摄':'待调整表达')+'</span><h3>'+slot.title+'</h3></div><p>成片预计使用 '+slot.length+' 秒。'+(index===1?shotInstruction():'建议保留动作起止，方便后续裁切。')+'</p>'+
       (index===1?'<button data-action="find">查看可用素材</button>':'')+'</article>';
   }).join('');
   const sample=processGoal()?'3571':'3578';
   const task=state.task ?
     '<article class="task"><img src="https://haicha-yijing-demo.frillypitch1.chatgpt.site/assets/'+sample+'.jpg" alt="拍摄参考"><div><span class="status">'+(state.taskDone?'已加到草稿':'待补拍 · 剪辑草稿第 2 段')+'</span><h3>'+middleTitle()+'</h3><p>至少录 '+(middle.length+2)+' 秒。'+shotInstruction()+'</p></div><div class="task-actions"><button data-action="find" '+(state.taskDone?'disabled':'')+'>关联已拍视频</button><button data-action="task-sample" '+(state.taskDone?'disabled':'')+'>用示例片段试一试</button></div></article>' :
     '<div class="notice">如需重拍，可从剪辑草稿建议卡创建任务并带上时间线位置。</div>';
-  $('tasks').innerHTML='<h3>关键镜头 · 拍前检查</h3>'+checks+'<h3>补拍任务</h3>'+task;
+  $('tasks').innerHTML='<h3>剪辑草稿里的拍摄清单</h3>'+checks+'<h3>补拍任务</h3>'+task;
 }
 function renderHistory() {
   $('history-list').innerHTML=state.logs.length?state.logs.map(log=>'<div class="log"><time>'+new Date(log.at).toLocaleTimeString('zh-CN',{hour:'2-digit',minute:'2-digit'})+'</time><div>'+escapeText(log.message)+'<small>已记在草稿里</small></div></div>').join(''):'<div class="notice">采用第一条建议后，修改记录会显示在这里。</div>';
@@ -325,7 +326,7 @@ async function loadImports() {
   render();window.studioAI?.refresh();
 }
 async function importVideos(files) {
-  const returnPage=page==='ai'?'ai':'library';
+  const returnPage=['ai','shoot'].includes(page)?page:'library';
   for(const file of files) {
     if(!file.type.startsWith('video/')){toast('请选择视频文件。');continue;}
     const url=URL.createObjectURL(file);
@@ -369,7 +370,7 @@ document.addEventListener('click',event=>{
   if(act==='find')candidates();
   if(act==='extend')extend();
   if(act==='confirm-extend'){closeDialog();change('倒入牛奶用到的片段延长至 '+slots()[2].length+' 秒',()=>state.end=slots()[2].length);loadSlot(2);}
-  if(act==='task'){
+  if(act==='task'&&canReshootNow()){
     if($('dialog').open)closeDialog();
     if(!state.task)change('创建补拍任务 · '+middleTitle(),()=>state.task=true);
     navigate('shoot');
@@ -433,12 +434,13 @@ document.addEventListener('click',event=>{
   stock.forEach(clip=>clip.tag=defaults[clip.id]);
   closeDialog();persist();navigate('edit');render();showClip('3572');
 });
-$('guide').onclick=()=>dialog('体验路径','<h3>用咖啡案例熟悉流程</h3><p>先播放草稿看中间缺口，再问小镜「我已经离店，怎么用现有素材补齐？」预览建议，确认插入后播放修改版。</p><h3>用自己的视频试一次</h3><p>评审网页支持咖啡案例的示例体验。进入「AI 方案」，可修改目标、预览证据、调整顺序，再采用到剪辑草稿。自行导入素材后可本地播放与标注，AI 识别视频画面需使用本机版。</p>');
+$('guide').onclick=()=>dialog('体验路径','<h3>拍完准备离开</h3><p>打开「离场前检查」，看看哪个动作还没拍到。播放候选视频，确认动作拍到了再标为已找到。</p><h3>已经在剪辑</h3><p>回到草稿，选中一个镜头，问小镜留多长、怎么接下一镜。找不到画面且无法补拍时，可以预览用现有画面讲的另一版。</p><h3>使用自己的视频</h3><p>网页支持导入后手动检查。自动识别视频画面需要启动本机 AI。</p>');
 $('credits').onclick=()=>dialog('素材来源与能力说明','<p>咖啡示例使用公开实拍素材和自编脚本。我的素材来自用户主动导入。</p><p><a href="https://mixkit.co/free-stock-video/tamping-coffee-for-a-coffee-maker-3572/" target="_blank" rel="noopener">Mixkit 3572 · 压紧咖啡粉</a><br><a href="https://mixkit.co/free-stock-video/coffee-is-served-in-a-cup-3573/" target="_blank" rel="noopener">Mixkit 3573 · 倒入牛奶</a><br><a href="https://mixkit.co/free-stock-video/coffee-maker-serving-an-espresso-3571/" target="_blank" rel="noopener">Mixkit 3571 · 咖啡流进杯子</a><br><a href="https://mixkit.co/free-stock-video/coffee-maker-making-coffee-3578/" target="_blank" rel="noopener">Mixkit 3578 · 机器操作</a></p><p>连接本地模型后，小镜根据当前草稿推荐操作，AI 方案可分析导入视频的抽帧。画面在本机处理，剪辑草稿与素材保存在浏览器。直接打开 HTML 时可使用示例体验。导出内容是剪辑方案与拍摄清单。</p>');
 $('close-dialog').onclick=closeDialog;
 $('dialog').addEventListener('cancel',()=>{$('dialog').querySelectorAll('video').forEach(video=>video.pause());});
 $('export').onclick=exportPlan;
 $('export-tasks').onclick=()=>{
+  if(window.fieldCheck?.export())return;
   if(state.aiPlan){window.studioAI.exportShotList();return;}
   const lines=slots().map(slot=>slot.title+' · 预计使用 '+slot.length+' 秒');
   if(state.task)lines.push('', '补拍任务 · '+middleTitle(),shotInstruction(),state.taskDone?'已加入草稿':'待拍');

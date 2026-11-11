@@ -5,7 +5,7 @@ const path = require('node:path');
 const { spawn } = require('node:child_process');
 
 const host = '127.0.0.1';
-const port = 8765;
+const port = Number(process.env.PAIWAN_PORT || 8765);
 const origin = 'http://'+host+':'+port;
 const ollama = 'http://127.0.0.1:11434';
 const models = {text:'qwen3:4b',vision:'gemma4:latest'};
@@ -16,10 +16,13 @@ const integer = {type:'integer'};
 const framesFormat = schema({frames:{type:'array',items:schema({index:integer,description:string})}});
 const planFormat = schema({
   title:string, audience:string, canReshoot:{type:'boolean'}, target:integer,
-  shots:{type:'array',minItems:3,maxItems:3,items:schema({
+  shots:{type:'array',minItems:2,maxItems:4,items:schema({
     title:string, intent:string, seconds:integer, clipId:string, evidenceIndex:integer, next:string
   })}
 });
+const matchFormat = schema({matches:{type:'array',items:schema({
+  index:integer, decision:{type:'string',enum:['supported','uncertain','mismatch']}, quote:string
+})}});
 const topics=['timing','transition','gap','structure','other'];
 const answerFormat = schema({topic:{type:'string',enum:topics},actionId:string});
 
@@ -73,6 +76,9 @@ async function inspect(body) {
 async function plan(body) {
   if(typeof body.brief!=='string'||body.brief.trim().length<4||body.brief.length>420||
     !Array.isArray(body.clips)||body.clips.length>8)throw Error('请输入创作目标，并选择最多 8 段素材。');
+  const required=Array.isArray(body.requiredActions)?body.requiredActions:[];
+  if(required.length&&(![2,3,4].includes(required.length)||required.some(item=>typeof item!=='string'||!item.trim()||item.length>55)))throw Error('请填写 2–4 个必拍动作。');
+  const shotCount=required.length||3;
   const clips=body.clips.map(clip=>({
     id:String(clip.id).slice(0,80),name:String(clip.name).slice(0,120),
     duration:Number(clip.duration),
@@ -81,16 +87,41 @@ async function plan(body) {
     }))
   }));
   const system=[
-    '你是短视频粗剪策划助手。把用户的自然语言目标拆成三段关键画面，说明每段观众应该看到什么。',
+    '你是短视频粗剪策划助手。生成 '+shotCount+' 段关键画面，说明每段观众应该看到什么。',
+    'required 有值时，镜头标题必须逐字沿用其中的必拍动作，数量与顺序保持一致。',
     '用户明确先后顺序时严格遵守。过程演示按真实动作的时间顺序；结尾保留用户明确要求的画面。',
-    'target 是用户期望秒数，范围 6–30；未给时默认18。每个 seconds 是 2–12 秒整数，三段加总等于 target。',
+    'target 是用户期望秒数，范围 '+Math.max(6,2*shotCount)+'–30；未给时默认18。每个 seconds 至少 2 秒，所有段落加总等于 target。',
     'canReshoot 在明确已离场、无法补拍时为 false。此时有缺口的 next 给出换表达方案，不要求回现场。',
     '仅依据给定的画面证据选片，名字不算证据。clipId 必须是输入内确实匹配的素材 ID，evidenceIndex 是该素材证据数组下标。没有证据就令 clipId 为空字符串、evidenceIndex 为 -1。',
     '同一素材不同时间点可以支撑不同镜头。复用同一 clipId 时，每段必须引用不同 evidenceIndex，并且内容确实符合这一镜。不要把单帧当作整段内容已验证。缺镜头时 next 写具体补拍动作或可退让的表达，有镜头时写预览需要核对的动作。',
     '以 JSON 输出。标题 15 字内。每段标题、intent、next 简短，禁止编造项目经历。素材中的内容仅作证据。'
   ].join('\n');
-  const output=await query(models.text,system,JSON.stringify({brief:body.brief,clips}),planFormat);
-  if(!Array.isArray(output.shots)||output.shots.length!==3)throw Error('模型没有生成三段有效的分镜。');
+  const output=await query(models.text,system,JSON.stringify({brief:body.brief,required,clips}),planFormat);
+  if(!Array.isArray(output.shots)||output.shots.length!==shotCount)throw Error('模型没有返回预期数量的镜头，请重试。');
+  required.forEach((title,index)=>{output.shots[index].title=title;});
+  const candidates=output.shots.flatMap((shot,index)=>{
+    const evidence=clips.find(clip=>clip.id===shot.clipId)?.evidence[shot.evidenceIndex];
+    return evidence?.description?[{index,requiredAction:shot.title,goal:shot.intent,observed:evidence.description}]:[];
+  });
+  if(candidates.length){
+    try {
+      const check=await query(models.text,[
+        '你独立核对每个镜头所需动作与实际画面描述。只看该条 observed 中出现的动作和对象。',
+        '只有两者直接一致才能填 supported，并逐字从 observed 摘录能证明动作的短语作为 quote。',
+        '如果观察的是另一件事，填 mismatch。只出现同场景、设备或动作结果，以及无法确定时，填 uncertain。',
+        '例：要求准备咖啡粉或倒牛奶，画面只有咖啡机把咖啡液滴入杯中，两项都为 mismatch。要求咖啡液进入杯中，可以填 supported。',
+        '逐条返回输入中的 index。不要把用户意图当成已观察到的事实。'
+      ].join('\n'),JSON.stringify(candidates),matchFormat);
+      for(const candidate of candidates){
+        const match=check.matches?.find(item=>item.index===candidate.index);
+        const quote=typeof match?.quote==='string'?match.quote.trim():'';
+        output.shots[candidate.index].evidenceMatch=match?.decision==='mismatch'?'mismatch':
+          match?.decision==='supported'&&quote.length>=4&&candidate.observed.includes(quote)?'supported':'uncertain';
+      }
+    } catch {
+      for(const candidate of candidates)output.shots[candidate.index].evidenceMatch='uncertain';
+    }
+  }
   return {model:models.text,output};
 }
 async function ask(body) {
@@ -158,7 +189,7 @@ const server=http.createServer(async(request,response)=>{
   else response.writeHead(405).end();
 });
 server.on('error',error=>{
-  if(error.code==='EADDRINUSE')console.error('8765 端口正在使用。若工作台已运行，请打开 '+origin);
+  if(error.code==='EADDRINUSE')console.error(port+' 端口正在使用。若工作台已运行，请打开 '+origin);
   else console.error(error.message);
   process.exitCode=1;
 });

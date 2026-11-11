@@ -144,6 +144,32 @@ select, input { padding: 8px 10px; max-width: 100%; }
 .task .status { display: block; margin-bottom: 6px; font-size: 11px; color: var(--accent); }
 .task p { color: var(--muted); margin: 4px 0; }
 .task-actions { display: flex; gap: 6px; flex-wrap: wrap; }
+.field-check { padding: clamp(14px,2.5vw,24px); margin-bottom: 18px; }
+.field-heading, .field-controls, .field-row { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; }
+.field-check h3 { margin: 0 0 5px; font-size: 20px; }
+.field-check p { margin: 4px 0; color: var(--muted); }
+.field-controls { justify-content: flex-start; margin: 16px 0; }
+.field-check select { padding: 7px 9px; max-width: 100%; min-height: 38px; }
+.field-check label { font-size: 12px; }
+.field-check button { min-height: 38px; }
+.field-custom { display: grid; gap: 8px; margin-bottom: 12px; }
+.field-input { display: grid; gap: 5px; max-width: 520px; }
+.field-input textarea { width: 100%; resize: vertical; border: 1px solid var(--line); border-radius: 8px; background: var(--raised); color: inherit; font: inherit; padding: 9px; }
+.field-summary { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 8px; margin-top: 14px; }
+.field-summary div { display: grid; gap: 2px; background: var(--raised); border-radius: 8px; padding: 9px 12px; }
+.field-summary span, .field-label { font-size: 11px; color: var(--muted); }
+.field-summary strong { font-size: 24px; line-height: 1.1; }
+.field-next { margin: 10px 0; border-left: 3px solid var(--accent); border-radius: 4px; padding: 9px 12px; background: #f3c37812; }
+.field-rows { display: grid; gap: 8px; margin-top: 10px; }
+.field-row { padding: 11px; border: 1px solid var(--line); border-radius: 9px; }
+.field-row h4 { margin: 2px 0 0; overflow-wrap: anywhere; }
+.field-row p { font-size: 12px; overflow-wrap: anywhere; }
+.field-row .actions, .field-row .actions>* { max-width: 100%; }
+.field-row[data-field-status="found"] .field-label, .ai-shot[data-evidence-status="found"] .ai-meta { color: #a8d7ad; }
+.field-row[data-field-status="pending"] .field-label, .ai-shot[data-evidence-status="pending"] .ai-meta { color: var(--accent); }
+.field-row[data-field-status="missing"] .field-label, .ai-shot[data-evidence-status="missing"] .ai-meta { color: #f3aa9f; }
+.field-select { display: grid; gap: 4px; }
+@media(max-width:680px) { .field-check button { min-height: 44px; } }
 .log { display: flex; gap: 18px; padding: 15px; background: var(--panel); border-bottom: 1px solid var(--line); }
 .log time { font-size: 11px; color: var(--muted); min-width: 54px; }
 .log small { display: block; margin-top: 4px; }
