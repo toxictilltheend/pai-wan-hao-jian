@@ -27,8 +27,8 @@
     }
     $('model-status').textContent=modelStatus.text
       ? (modelStatus.vision?'本地文字与视觉模型已连接':'本地文字模型已连接')
-      : local?'本机模型未连接':'公开示例 · 可直接体验';
-    $('mirror-mode').textContent=modelStatus.text?'本地模型':'示例模式';
+      : state.project?'规则反馈 · 本机可自动识别':local?'本机模型未连接':'公开示例 · 可直接体验';
+    $('mirror-mode').textContent=modelStatus.text?'本地模型':state.project?'规则反馈':'示例模式';
   }
   async function request(route,body,signal) {
     const response=await fetch('/api/ai/'+route,{
@@ -157,11 +157,11 @@
   }
   function validate(raw,clips,brief,mode) {
     if(!raw||!Array.isArray(raw.shots)||raw.shots.length!==(fieldActions.length||3))throw Error('镜头数量不符，请重试。');
-    const count=raw.shots.length, minimum=Math.max(6,2*count);
+    const count=raw.shots.length, minimum=Math.max(6,2*count), maximum=state.project?90:30;
     const explicit=brief.match(/(\d{1,2})\s*秒/);
     const desired=Number(raw.target);
-    const target=explicit?Number(explicit[1]):Number.isInteger(desired)&&desired>=6&&desired<=30?desired:18;
-    if(target<minimum||target>30)throw Error('请把目标控制在 '+minimum+'–30 秒。');
+    const target=explicit?Number(explicit[1]):Number.isInteger(desired)&&desired>=6&&desired<=maximum?desired:18;
+    if(target<minimum||target>maximum)throw Error('请把目标控制在 '+minimum+'–'+maximum+' 秒。');
     let seconds=raw.shots.map(shot=>Number(shot.seconds));
     if(seconds.some(value=>!Number.isInteger(value)||value<2||value>14)||seconds.reduce((sum,value)=>sum+value,0)!==target){
       const base=Math.floor(target/count),extra=target%count;
@@ -212,7 +212,7 @@
     const found=plan.shots.filter(shot=>shot.evidenceStatus==='found').length;
     const missing=plan.shots.filter(shot=>shot.evidenceStatus==='missing').length;
     const pending=plan.shots.length-found-missing;
-    $('ai-result-kind').textContent=plan.mode==='model'?'本地模型':'示例体验';
+    $('ai-result-kind').textContent=plan.mode==='model'?'本地模型':plan.mode==='workspace'?'规则建议':'示例体验';
     $('ai-result').innerHTML='<div><h3>'+escapeText(plan.title)+'</h3><p>'+escapeText(plan.audience)+'</p><small>'+
       plan.target+' 秒 · 已找到 '+found+' · 待确认 '+pending+' · 缺少 '+missing+(plan.canReshoot?'':' · 无法补拍')+'</small></div>'+
       plan.shots.map((shot,index)=>{
@@ -234,20 +234,34 @@
     if(brief.length<4){$('ai-step').textContent='请先写一句你想拍或剪什么。';$('ai-brief').focus();return;}
     const clips=available().filter(clip=>selectedIds.has(clip.id));
     if(clips.length>8){$('ai-step').textContent='每次最多选择 8 段视频。';return;}
-    if(source==='mine'&&clips.length>3){$('ai-step').textContent='首次画面检查请选择最多 3 段，缩短分析时间。';return;}
     const controller=new AbortController();run=controller;
     $('ai-generate').disabled=true;$('ai-cancel').hidden=false;
     clearResult('正在分析目标与素材…');
     try {
       await checkStatus();
       controller.signal.throwIfAborted();
+      if(state.project&&!modelStatus.text){
+        const suggestion=window.projectPlanner.plan(brief,brief===state.aiPlan.brief?String(state.aiPlan.target):'',canReshootNow());
+        plan=window.projectPlanner.draft(suggestion);
+        for(const shot of plan.shots){
+          const previous=state.aiPlan.shots.find(item=>item.title===shot.title&&item.evidenceStatus==='found'&&getClip(item.clipId));
+          if(previous){
+            Object.assign(shot,{clipId:previous.clipId,start:previous.start,end:Math.min(previous.end,previous.start+shot.seconds),
+              evidence:previous.evidence,evidenceStatus:'found',reason:''});
+            if(!plan.clipIds.includes(shot.clipId))plan.clipIds.push(shot.clipId);
+          }
+        }
+        renderProposal();$('ai-step').textContent=suggestion.note+' 自有视频请到离场检查里关联和确认。';return;
+      }
       if(!modelStatus.text&&source==='mine')throw Error('此评审版可以导入并预览本地视频。AI 识别视频画面需使用本机版；在本页可切换到咖啡案例体验生成镜头安排。');
       if(!modelStatus.text&&!/咖啡|拿铁|倒入牛奶|萃取/.test(brief))throw Error('示例模式只覆盖咖啡示例。分析其他主题请启动本地 AI。');
+      if(source==='mine'&&clips.length>3)throw Error('首次画面检查请选择最多 3 段，缩短分析时间。');
       if(source==='mine'&&clips.length&&!modelStatus.vision)throw Error('导入视频的画面分析需要本地视觉模型。');
       const records=await analyzeClips(clips,controller.signal);
       controller.signal.throwIfAborted();
       $('ai-step').textContent='正在检查需要哪些镜头、手里的素材够不够…';
-      const result=modelStatus.text?await request('plan',{brief,clips:records,requiredActions:fieldActions},controller.signal):null;
+      if(state.project)fieldActions=brief===state.aiPlan.brief?state.aiPlan.shots.map(shot=>shot.title):[];
+      const result=modelStatus.text?await request('plan',{brief,clips:records,requiredActions:fieldActions,workspace:!!state.project},controller.signal):null;
       controller.signal.throwIfAborted();
       plan=validate(result?.output||offlineSample(brief,records),records,brief,result?'model':'sample');
       renderProposal();
@@ -287,6 +301,7 @@
     change('采用 AI 镜头安排方案 · '+draft.title,()=>{
       state.aiPlan=draft;
       if(!draft.canReshoot)state.canReshoot=false;
+      if(state.project){Object.assign(state.project,{title:draft.title,idea:draft.brief,target:draft.target});state.field=null;}
       if(fieldActions.length&&state.field?.source==='mine')state.field.ran=true;
     });
     const blank=draft.shots.every(shot=>!shot.clipId);
@@ -348,7 +363,7 @@
       state.aiPlan.shots.forEach((shot,index)=>{
         if(getClip(shot.clipId||shot.candidate?.clipId))list.push({id:'proof-'+index,label:'查看「'+shot.title+'」的画面依据'});
       });
-      if(canReshootNow())list.push({id:'shoot',label:'打开拍摄清单'});
+      if(canReshootNow()||state.project)list.push({id:'shoot',label:state.project?'打开离场检查':'打开拍摄清单'});
     } else {
       const gaps=issues();
       if(gaps.some(item=>item.type==='missing'))list.push({id:'find',label:'看看中间这段能用什么'});
@@ -389,19 +404,19 @@
   function hintedTopic(question) {
     if(/下一镜|怎么接|衔接|转场|硬切/.test(question))return 'transition';
     if(/留多长|时长|几秒|节奏|切点|怎么裁|太短|太长|快一点|慢一点/.test(question))return 'timing';
-    if(/缺|补拍|离店|离场|找.{0,2}素材|不够|替代/.test(question))return 'gap';
+    if(/缺|补拍|离店|离场|找.{0,2}素材|不够|替代|怎么拍|要拍什么/.test(question))return 'gap';
     if(/开头|结尾|顺序|结构|怎么剪|表达/.test(question))return 'structure';
     return '';
   }
   function groundedAdvice(topic,info,question,actionId,noReshoot) {
     const shot=info.shots[info.focus], next=info.shots[info.focus+1];
-    const gap=info.shots.find(item=>!item.clip);
+    const gap=shot&&!shot.clip?shot:info.shots.find(item=>!item.clip);
     const available=new Set(currentActions(info).map(action=>action.id));
     const advice=(basis,suggestion,id='')=>({basis,suggestion,actionId:available.has(id)?id:''});
     if(topic==='timing'){
       if(!shot)return advice('你当前在看整条剪辑草稿。','先选中一个镜头，我就能结合它的计划时长和原视频给建议。');
       const basis='「'+shot.title+'」计划 '+shot.plannedSeconds+' 秒，已用 '+shot.usedSeconds+' 秒。';
-      if(!shot.clip)return advice(basis,'先补上能看清关键动作的画面，再从动作结束处判断切点。',!state.aiPlan&&info.focus===1?'find':'ai');
+      if(!shot.clip)return advice(basis,'先关联能看清这个动作的片段，再从动作结束处判断切点。',state.project?'shoot':!state.aiPlan&&info.focus===1?'find':'ai');
       if(shot.usedSeconds<shot.plannedSeconds&&shot.rawSeconds>=shot.plannedSeconds){
         return advice(basis+' 原视频 '+shot.rawSeconds+' 秒。','先预览原视频，把动作留完整。若动作在计划时长之前就结束，可以缩短这一段。',!state.aiPlan&&info.focus===2?'extend':'locate-'+info.focus);
       }
@@ -428,6 +443,12 @@
         const gapIndex=info.shots.indexOf(gap);
         if(state.aiPlan?.shots[gapIndex]?.candidate)return advice(basis,'有候选片段。先打开原视频，确认能看到关键动作，再放进草稿。','proof-'+gapIndex);
         if(!state.aiPlan&&available.has('find'))return advice(basis,'先查项目里未用的镜头。若没有合适片段'+(noReshoot?'，可以调整表达，避免跳过一个还承诺会展示的步骤。':'，再决定是否安排补拍。'),'find');
+        if(state.project){
+          const need=state.aiPlan.shots[gapIndex].intent;
+          const next=noReshoot?'先看素材库有没有能支撑「'+gap.title+'」的片段。如果确实没有，调整想讲的内容，保留已有画面能说明的部分。':
+            '先核对已导入的视频。还没有的话，补拍「'+gap.title+'」。'+need;
+          return advice(basis,next,'shoot');
+        }
         return advice(basis,noReshoot?'用已有画面调整想讲的内容，再核对新方案。':'先检查是否有可用的原视频区间。仍缺时，把它带到拍摄清单。',noReshoot?'ai':actionId==='shoot'?'shoot':'ai');
       }
       const short=info.shots.find(item=>item.usedSeconds<item.plannedSeconds);
@@ -566,6 +587,11 @@
     renderDraft,renderShotList,updateMirrorScope,previewDraft,
     exportShotList() {downloadShotList(state.aiPlan);}
   };
+  if(state.project){
+    useSource('mine');$('ai-source').closest('label').hidden=true;$('example-prompts').hidden=true;
+    $('ai-brief').value=state.aiPlan.brief;
+    $('ai-brief').placeholder='写下你想拍的内容，以及观众需要看到哪些动作。';
+  }
   render();
   checkStatus();
 })();

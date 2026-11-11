@@ -79,6 +79,7 @@ async function plan(body) {
   const required=Array.isArray(body.requiredActions)?body.requiredActions:[];
   if(required.length&&(![2,3,4].includes(required.length)||required.some(item=>typeof item!=='string'||!item.trim()||item.length>55)))throw Error('请填写 2–4 个必拍动作。');
   const shotCount=required.length||3;
+  const maximum=body.workspace===true?90:30;
   const clips=body.clips.map(clip=>({
     id:String(clip.id).slice(0,80),name:String(clip.name).slice(0,120),
     duration:Number(clip.duration),
@@ -90,7 +91,7 @@ async function plan(body) {
     '你是短视频粗剪策划助手。生成 '+shotCount+' 段关键画面，说明每段观众应该看到什么。',
     'required 有值时，镜头标题必须逐字沿用其中的必拍动作，数量与顺序保持一致。',
     '用户明确先后顺序时严格遵守。过程演示按真实动作的时间顺序；结尾保留用户明确要求的画面。',
-    'target 是用户期望秒数，范围 '+Math.max(6,2*shotCount)+'–30；未给时默认18。每个 seconds 至少 2 秒，所有段落加总等于 target。',
+    'target 是用户期望秒数，范围 '+Math.max(6,2*shotCount)+'–'+maximum+'；未给时默认18。每个 seconds 至少 2 秒，所有段落加总等于 target。',
     'canReshoot 在明确已离场、无法补拍时为 false。此时有缺口的 next 给出换表达方案，不要求回现场。',
     '仅依据给定的画面证据选片，名字不算证据。clipId 必须是输入内确实匹配的素材 ID，evidenceIndex 是该素材证据数组下标。没有证据就令 clipId 为空字符串、evidenceIndex 为 -1。',
     '同一素材不同时间点可以支撑不同镜头。复用同一 clipId 时，每段必须引用不同 evidenceIndex，并且内容确实符合这一镜。不要把单帧当作整段内容已验证。缺镜头时 next 写具体补拍动作或可退让的表达，有镜头时写预览需要核对的动作。',

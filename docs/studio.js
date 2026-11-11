@@ -11,14 +11,19 @@ const stock = [
   {id:'3571',name:'03 · 咖啡流入杯中',tag:'extract',duration:10,source:'https://haicha-yijing-demo.frillypitch1.chatgpt.site/assets/3571.mp4',poster:'https://haicha-yijing-demo.frillypitch1.chatgpt.site/assets/3571.jpg'},
   {id:'3578',name:'04 · 研磨与机器操作',tag:'machine',duration:12,source:'https://haicha-yijing-demo.frillypitch1.chatgpt.site/assets/3578.mp4',poster:'https://haicha-yijing-demo.frillypitch1.chatgpt.site/assets/3578.jpg'}
 ];
-const KEY='shot-studio-v2';
+const SAMPLE_KEY='shot-studio-v2';
+const PROJECT_PREFIX='shot-studio-project-v1:';
+const requestedProject=new URLSearchParams(location.search).get('project');
+let storageKey=SAMPLE_KEY;
 let state = initial();
 try {
-  const saved = JSON.parse(localStorage.getItem(KEY));
+  const own=requestedProject&&/^[0-9a-f-]{36}$/.test(requestedProject)?JSON.parse(localStorage.getItem(PROJECT_PREFIX+requestedProject)):null;
+  if(own?.version===2&&own.data?.project?.id===requestedProject&&Array.isArray(own.data.aiPlan?.shots)&&own.data.aiPlan.shots.length)storageKey=PROJECT_PREFIX+requestedProject;
+  const saved=storageKey===SAMPLE_KEY?JSON.parse(localStorage.getItem(SAMPLE_KEY)):own;
   if (saved?.version===2 && saved.data && Array.isArray(saved.data.logs)) state={...initial(),...saved.data};
 } catch { /* Fall back to a clean sample if the browser has no readable draft. */ }
 let selected='3572', page='edit', currentSlot=null, playing=false, compare=false, pending=null;
-let media = [...stock], database, toastTimer;
+let media = state.project?[]:[...stock], database, toastTimer;
 const tags={prepare:'准备咖啡粉',machine:'机器操作',extract:'咖啡流入杯中',milk:'倒入牛奶',unknown:'待标注'};
 function toast(message) {
   $('toast').textContent=message;
@@ -28,13 +33,15 @@ function toast(message) {
 }
 function persist() {
   try {
-    localStorage.setItem(KEY,JSON.stringify({version:2,data:state}));
+    if(state.project)state.project.updatedAt=Date.now();
+    localStorage.setItem(storageKey,JSON.stringify({version:2,data:state}));
     $('save').textContent='已保存到此浏览器';
   } catch { $('save').textContent='保存失败，请导出方案'; }
 }
 function snapshot() {
   const {goal,target,filled,fillId,end,task,taskDone,analyzed,aiPlan}=state;
-  return {goal,target,filled,fillId,end,task,taskDone,analyzed,aiPlan:aiPlan?structuredClone(aiPlan):null};
+  return {goal,target,filled,fillId,end,task,taskDone,analyzed,aiPlan:aiPlan?structuredClone(aiPlan):null,
+    ...(state.project?{field:structuredClone(state.field),project:structuredClone(state.project)}:{})};
 }
 function log(message) {
   state.logs.unshift({at:new Date().toISOString(),message});
@@ -103,7 +110,13 @@ function navigate(next) {
   if (page==='library') renderLibrary();
   if (page==='shoot'){renderTasks();window.fieldCheck?.render();}
   if (page==='history') renderHistory();
-  $('brief-bar').hidden=page==='ai';
+  $('brief-bar').hidden=page==='ai'||page==='projects';
+  $('project-head').hidden=page==='projects';
+  $('export').hidden=page==='projects';
+  $('save').hidden=page==='projects';
+  $('footnote').textContent=page==='projects'?'项目保存在此浏览器':state.project?'素材和草稿保存在此浏览器':'示例项目 · 实拍素材来自 Mixkit';
+  $('retry').hidden=page==='projects';
+  if(page==='projects')window.projectHub?.refresh();
   if (page==='ai')window.studioAI?.open();
 }
 function showClip(id) {
@@ -121,10 +134,10 @@ function showClip(id) {
   renderBin();renderTimeline();window.studioAI?.updateMirrorScope();
 }
 function renderBin() {
-  const projectMedia=state.aiPlan?media.filter(clip=>state.aiPlan.clipIds.includes(clip.id)):media;
+  const projectMedia=state.aiPlan&&!state.project?media.filter(clip=>state.aiPlan.clipIds.includes(clip.id)):media;
   $('clip-count').textContent=projectMedia.length+' 段';
   $('bin').innerHTML=projectMedia.slice(0,4).map(clip=>'<button class="clip '+(clip.id===selected?'selected':'')+'" data-clip="'+clip.id+'" aria-pressed="'+(clip.id===selected)+'">'+
-    placeholder(clip)+'<div class="meta">'+escapeText(clip.name)+'<small>'+clip.duration.toFixed(1)+' 秒 · '+(used(clip.id)?'已在剪辑草稿':'未使用')+'</small></div></button>').join('');
+    placeholder(clip)+'<div class="meta">'+escapeText(clip.name)+'<small>'+clip.duration.toFixed(1)+' 秒 · '+(used(clip.id)?'已在剪辑草稿':'未使用')+'</small></div></button>').join('')||'<p class="muted">还没有导入视频。</p>';
 }
 function renderTimeline() {
   const timeline=slots(compare);
@@ -166,12 +179,13 @@ function render() {
   $('goal').value=state.goal;$('target').value=state.target;
   const plan=state.aiPlan;
   $('project-title').textContent=plan?.title||'从咖啡粉到一杯拿铁';
-  $('project-kind').textContent=plan?'创作草稿':'咖啡制作记录';
+  $('project-kind').textContent=state.project?'自建工作区':plan?'创作草稿':'咖啡制作记录';
+  $('reset').hidden=!!state.project;
   $('goal-field').hidden=!!plan;$('duration-field').hidden=!!plan;
   $('ai-brief-summary').hidden=!plan;
   $('ai-brief-summary').textContent=plan?plan.audience+' · '+plan.target+' 秒':'';
-  $('analysis-kind').textContent=plan?(plan.mode==='model'?'本地模型':'示例体验'):'示例分析';
-  $('analyze').textContent=plan?'✧ 调整 AI 方案':'✧ 检查素材缺口';
+  $('analysis-kind').textContent=state.project?(plan?.mode==='model'?'本机模型':'项目检查'):plan?(plan.mode==='model'?'本地模型':'示例体验'):'示例分析';
+  $('analyze').textContent=state.project?'✧ 检查素材缺口':plan?'✧ 调整 AI 方案':'✧ 检查素材缺口';
   renderBin();renderTimeline();renderAssistant();renderTasks();renderHistory();
   if(page==='library')renderLibrary();
   window.studioAI?.updateMirrorScope();
@@ -210,9 +224,11 @@ function fillMiddle(id, message) {
 }
 function renderLibrary() {
   const query=$('search').value.toLowerCase();
-  $('library-grid').innerHTML=media.filter(clip=>(clip.name+tags[clip.tag]).toLowerCase().includes(query)).map(clip=>
-    '<article class="media-card">'+placeholder(clip)+'<div class="body"><h3>'+escapeText(clip.name)+'</h3><p>'+clip.duration.toFixed(1)+' 秒 · '+(clip.custom?'本地导入':'公开实拍素材')+' · '+(used(clip.id)?'已使用':'未使用')+'</p><label>内容标注<select data-tag="'+clip.id+'">'+Object.entries(tags).map(([key,label])=>'<option value="'+key+'" '+(key===clip.tag?'selected':'')+'>'+label+'</option>').join('')+'</select></label><button data-preview="'+clip.id+'">播放原视频</button></div></article>').join('');
-  if (!$('library-grid').children.length) $('library-grid').innerHTML='<div class="notice">没有找到相关素材，试试其他关键词。</div>';
+  $('library-grid').innerHTML=media.filter(clip=>(clip.name+(state.project?'':tags[clip.tag])).toLowerCase().includes(query)).map(clip=>
+    '<article class="media-card">'+placeholder(clip)+'<div class="body"><h3>'+escapeText(clip.name)+'</h3><p>'+clip.duration.toFixed(1)+' 秒 · '+(clip.custom?'本地导入':'公开实拍素材')+' · '+(used(clip.id)?'已使用':'未使用')+'</p>'+
+    (state.project?'':'<label>内容标注<select data-tag="'+clip.id+'">'+Object.entries(tags).map(([key,label])=>'<option value="'+key+'" '+(key===clip.tag?'selected':'')+'>'+label+'</option>').join('')+'</select></label>')+
+    '<button data-preview="'+clip.id+'">播放原视频</button></div></article>').join('');
+  if (!$('library-grid').children.length) $('library-grid').innerHTML='<div class="notice">'+(media.length?'没有找到相关素材，试试其他关键词。':'还没有视频。到拍摄清单导入素材，再把它关联到对应镜头。')+'</div>';
 }
 function shotInstruction() {
   return processGoal()?'让杯口和咖啡流出的地方同时入镜，保持机位稳定。':'从侧面拍手操作咖啡机，保留完整动作和现场声。';
@@ -255,6 +271,7 @@ function loadSlot(index,autoplay=false) {
   $('gap-screen').hidden=!!clip;
   if (!clip) {
     stop();
+    const video=$('video');video.removeAttribute('src');video.removeAttribute('poster');video.load();
     if(autoplay)toast('播放停在缺口处，填入素材后可继续。');
     return;
   }
@@ -306,7 +323,7 @@ function download(name,text,type='application/json') {
   setTimeout(()=>URL.revokeObjectURL(url),2000);
 }
 function exportPlan() {
-  download('拍完好剪-剪辑方案.json',JSON.stringify({project:state.aiPlan?.title||'从咖啡粉到一杯拿铁',goal:state.aiPlan?.audience||state.goal,target:targetSeconds(),slots:slots(),plan:state.aiPlan,media:media.map(({source,poster,...clip})=>clip),tasks:{created:state.task,done:state.taskDone},history:state.logs},null,2));
+  download('拍完好剪-剪辑方案.json',JSON.stringify({project:state.aiPlan?.title||'从咖啡粉到一杯拿铁',goal:state.aiPlan?.audience||state.goal,target:targetSeconds(),slots:slots(),plan:state.aiPlan,media:media.map(({source,poster,...clip})=>clip),tasks:state.project?state.field:{created:state.task,done:state.taskDone},history:state.logs},null,2));
   toast('剪辑方案已导出，包含用到的片段与拍摄任务。');
 }
 async function loadImports() {
@@ -324,6 +341,7 @@ async function loadImports() {
     if(meta)media.push({...meta,source:URL.createObjectURL(record.blob),custom:true});
   }
   render();window.studioAI?.refresh();
+  if(page==='shoot')window.fieldCheck?.render();
 }
 async function importVideos(files) {
   const returnPage=['ai','shoot'].includes(page)?page:'library';
@@ -415,7 +433,7 @@ document.addEventListener('change',event=>{
   });
   if(currentSlot!==null)loadSlot(currentSlot);
 }));
-$('analyze').onclick=()=>{if(state.aiPlan){navigate('ai');return;}navigate('edit');analyze();};
+$('analyze').onclick=()=>{if(state.project){navigate('shoot');return;}if(state.aiPlan){navigate('ai');return;}navigate('edit');analyze();};
 $('retry').onclick=()=>{navigate('edit');analyze(true);};
 $('play-all').onclick=playAll;
 $('compare').onclick=()=>{stop();compare=!compare;renderTimeline();loadSlot(0);};
@@ -423,7 +441,8 @@ $('undo').onclick=()=>{
   if(!state.undo.length)return;stop();
   const previous=state.undo.pop();Object.assign(state,previous);
   log('撤销上一步剪辑修改');
-  compare=false;persist();render();showClip('3572');
+  compare=false;persist();render();
+  if(state.project){loadSlot(0);if(page==='shoot')window.fieldCheck?.render();}else showClip('3572');
 };
 $('reset').onclick=()=>dialog('重新体验这个示例', '<p>重置当前剪辑、任务和修改记录。已导入的视频会继续保存在素材库。</p><button id="confirm-reset" class="primary">重置剪辑与任务</button>');
 document.addEventListener('click',event=>{
@@ -434,7 +453,7 @@ document.addEventListener('click',event=>{
   stock.forEach(clip=>clip.tag=defaults[clip.id]);
   closeDialog();persist();navigate('edit');render();showClip('3572');
 });
-$('guide').onclick=()=>dialog('体验路径','<h3>拍完准备离开</h3><p>打开「离场前检查」，看看哪个动作还没拍到。播放候选视频，确认动作拍到了再标为已找到。</p><h3>已经在剪辑</h3><p>回到草稿，选中一个镜头，问小镜留多长、怎么接下一镜。找不到画面且无法补拍时，可以预览用现有画面讲的另一版。</p><h3>使用自己的视频</h3><p>网页支持导入后手动检查。自动识别视频画面需要启动本机 AI。</p>');
+$('guide').onclick=()=>dialog('体验路径','<h3>从你自己的目标开始</h3><p>在「我的项目」写下想拍的内容，编辑生成的必拍动作，创建工作区。</p><h3>拍完准备离开</h3><p>打开「离场前检查」，导入视频并关联动作。播放视频，确认动作后可以放进草稿。</p><h3>已经在剪辑</h3><p>选中一个镜头，问小镜留多长、怎么接下一镜。网页按目标、时间线和你的确认给反馈，自动识别自有视频可在本机版体验。</p>');
 $('credits').onclick=()=>dialog('素材来源与能力说明','<p>咖啡示例使用公开实拍素材和自编脚本。我的素材来自用户主动导入。</p><p><a href="https://mixkit.co/free-stock-video/tamping-coffee-for-a-coffee-maker-3572/" target="_blank" rel="noopener">Mixkit 3572 · 压紧咖啡粉</a><br><a href="https://mixkit.co/free-stock-video/coffee-is-served-in-a-cup-3573/" target="_blank" rel="noopener">Mixkit 3573 · 倒入牛奶</a><br><a href="https://mixkit.co/free-stock-video/coffee-maker-serving-an-espresso-3571/" target="_blank" rel="noopener">Mixkit 3571 · 咖啡流进杯子</a><br><a href="https://mixkit.co/free-stock-video/coffee-maker-making-coffee-3578/" target="_blank" rel="noopener">Mixkit 3578 · 机器操作</a></p><p>连接本地模型后，小镜根据当前草稿推荐操作，AI 方案可分析导入视频的抽帧。画面在本机处理，剪辑草稿与素材保存在浏览器。直接打开 HTML 时可使用示例体验。导出内容是剪辑方案与拍摄清单。</p>');
 $('close-dialog').onclick=closeDialog;
 $('dialog').addEventListener('cancel',()=>{$('dialog').querySelectorAll('video').forEach(video=>video.pause());});
@@ -450,9 +469,9 @@ $('import').onchange=event=>importVideos([...event.target.files]);
 $('search').oninput=renderLibrary;
 for(const clip of stock)if(state.stockTags?.[clip.id])clip.tag=state.stockTags[clip.id];
 persist();
-render();showClip(selected);
+render();if(state.project)loadSlot(0);else showClip(selected);
 loadImports().catch(()=>toast('浏览器未允许保存本地视频，内置示例仍可使用。'));
-for(const clip of stock){
+for(const clip of state.project?[]:stock){
   const probe=document.createElement('video');probe.preload='metadata';probe.src=clip.source;
   probe.onloadedmetadata=()=>{clip.duration=probe.duration;renderBin();};
 }
